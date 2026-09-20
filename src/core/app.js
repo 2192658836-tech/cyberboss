@@ -121,6 +121,9 @@ class CyberbossApp {
   }
 
   async start() {
+    if (this.config.arongPersonaFile) {
+      require("../adapters/runtime/shared-instructions").loadWechatInstructions(this.config);
+    }
     const account = this.channelAdapter.resolveAccount();
     this.activeAccountId = account.accountId;
     this.systemMessageDispatcher = new SystemMessageDispatcher({

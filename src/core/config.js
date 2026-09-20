@@ -32,6 +32,7 @@ function readConfig() {
     timelineScreenshotQueueFile: path.join(stateDir, "timeline-screenshot-queue.json"),
     projectToolContextFile: path.join(stateDir, "project-tool-runtime-context.json"),
     weixinInstructionsFile: path.join(stateDir, "weixin-instructions.md"),
+    arongPersonaFile: readTextEnv("CYBERBOSS_ARONG_PERSONA_FILE"),
     weixinOperationsFile: path.resolve(__dirname, "..", "..", "templates", "weixin-operations.md"),
     stickersDir: path.join(stateDir, "stickers"),
     stickerAssetsDir: path.join(stateDir, "stickers", "assets"),

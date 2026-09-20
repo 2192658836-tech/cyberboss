@@ -18,6 +18,7 @@ function createCodexRuntimeAdapter(config) {
   const sessionStore = new SessionStore({ filePath: config.sessionsFile, runtimeId: "codex" });
   let client = null;
   let readyState = null;
+  const personaThreads = new Set();
   const configuredModel = normalizeText(config.codexModel);
   const configuredModelProvider = normalizeText(config.codexModelProvider);
 
@@ -115,6 +116,7 @@ function createCodexRuntimeAdapter(config) {
       }
       readyState = null;
       client = null;
+      personaThreads.clear();
     },
     async startFreshThreadDraft() {
       return {};
@@ -175,6 +177,7 @@ function createCodexRuntimeAdapter(config) {
         workspaceRoot,
       });
       const result = await completion;
+      if (config.arongPersonaFile) personaThreads.add(threadId);
       return { threadId, ...result };
     },
     async sendTextTurn(args) {
@@ -199,7 +202,7 @@ function createCodexRuntimeAdapter(config) {
         model: desiredModel,
         modelProvider: desiredModelProvider,
       });
-      let outboundText = text;
+      let openingTurn = false;
       if (!threadId) {
         const response = await runtimeClient.startThread({
           cwd: workspaceRoot,
@@ -211,7 +214,7 @@ function createCodexRuntimeAdapter(config) {
           throw new Error("thread/start did not return a thread id");
         }
         sessionStore.setThreadIdForWorkspace(bindingKey, workspaceRoot, threadId, metadata);
-        outboundText = buildOpeningTurnText(config, text);
+        openingTurn = true;
       } else {
         await runtimeClient.resumeThread({
           threadId,
@@ -233,10 +236,14 @@ function createCodexRuntimeAdapter(config) {
             model: desiredModel,
             modelProvider: desiredModelProvider,
           });
-          outboundText = buildOpeningTurnText(config, text);
+          openingTurn = true;
         });
       }
 
+      if (config.arongPersonaFile && !personaThreads.has(threadId)) {
+        openingTurn = true;
+      }
+      const outboundText = openingTurn ? buildOpeningTurnText(config, text) : text;
       const response = await runtimeClient.sendUserMessage({
         threadId,
         text: outboundText,
@@ -245,6 +252,7 @@ function createCodexRuntimeAdapter(config) {
         modelProvider: desiredModelProvider,
         workspaceRoot,
       });
+      if (config.arongPersonaFile) personaThreads.add(threadId);
       return {
         threadId,
         turnId: extractTurnId(response),

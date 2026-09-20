@@ -36,7 +36,9 @@ function buildInstructionRefreshText(config) {
 }
 
 function loadWechatInstructions(config = {}) {
-  const persona = loadInstructionFile(config.weixinInstructionsFile, config);
+  const persona = config.arongPersonaFile
+    ? loadArongPersona(config.arongPersonaFile)
+    : loadInstructionFile(config.weixinInstructionsFile, config);
   const operations = loadInstructionFile(config.weixinOperationsFile, config);
   const sections = [];
   if (persona) {
@@ -49,6 +51,21 @@ function loadWechatInstructions(config = {}) {
 }
 
 const instructionCache = new Map();
+
+function loadArongPersona(filePath) {
+  let content;
+  try {
+    // External persona is authoritative text, not a Cyberboss template.
+    // Read on demand so /reread sees edits even if the mtime is unchanged.
+    content = fs.readFileSync(filePath, "utf8").trim();
+  } catch (error) {
+    throw new Error(`Cannot read CYBERBOSS_ARONG_PERSONA_FILE (${filePath}): ${error.message}`, { cause: error });
+  }
+  if (!content) {
+    throw new Error(`CYBERBOSS_ARONG_PERSONA_FILE is empty: ${filePath}`);
+  }
+  return content;
+}
 
 function loadInstructionFile(filePath, config = {}) {
   const normalizedPath = typeof filePath === "string" ? filePath.trim() : "";
