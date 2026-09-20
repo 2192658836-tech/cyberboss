@@ -60,8 +60,8 @@ test("codex adapter reinitializes when the websocket transport has dropped", asy
     filename: mcpConfigPath,
     loaded: true,
     exports: {
-      resolveCodexProjectToolMcpServerConfig() {
-        return null;
+      resolveCodexMcpServerConfigs() {
+        return [];
       },
     },
   };
@@ -164,8 +164,8 @@ test("codex adapter lets configured env model override stored session model", as
     filename: mcpConfigPath,
     loaded: true,
     exports: {
-      resolveCodexProjectToolMcpServerConfig() {
-        return null;
+      resolveCodexMcpServerConfigs() {
+        return [];
       },
     },
   };

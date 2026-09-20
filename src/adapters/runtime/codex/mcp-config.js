@@ -17,7 +17,36 @@ function resolveCodexProjectToolMcpServerConfig({ cyberbossHome = "" } = {}) {
   };
 }
 
+function resolveCodexMcpServerConfigs({ cyberbossHome = "", env = process.env } = {}) {
+  const configs = [];
+  const projectConfig = resolveCodexProjectToolMcpServerConfig({
+    cyberbossHome: cyberbossHome || env.CYBERBOSS_HOME,
+  });
+  if (projectConfig) {
+    configs.push(projectConfig);
+  }
+  const script = normalizeNonEmptyString(env.CYBERBOSS_ARONG_MEMORY_SCRIPT);
+  if (script) {
+    const ownerId = normalizeNonEmptyString(env.CYBERBOSS_ARONG_MEMORY_OWNER_ID);
+    if (!ownerId) {
+      throw new Error("CYBERBOSS_ARONG_MEMORY_OWNER_ID is required when CYBERBOSS_ARONG_MEMORY_SCRIPT is configured");
+    }
+    configs.push({
+      name: "arong_memory",
+      command: normalizeNonEmptyString(env.CYBERBOSS_ARONG_MEMORY_COMMAND) || "node",
+      args: [script],
+      env: { OWNER_ID: ownerId },
+    });
+  }
+  return configs;
+}
+
 function buildCodexMcpConfigArgs(mcpServerConfig) {
+  const configs = Array.isArray(mcpServerConfig) ? mcpServerConfig : [mcpServerConfig];
+  return configs.flatMap(buildSingleServerConfigArgs);
+}
+
+function buildSingleServerConfigArgs(mcpServerConfig) {
   if (!mcpServerConfig || typeof mcpServerConfig !== "object") {
     return [];
   }
@@ -35,7 +64,11 @@ function buildCodexMcpConfigArgs(mcpServerConfig) {
     "-c",
     `mcp_servers.${name}.args=${formatTomlArray(args)}`,
   ];
-  for (const toolName of listProjectToolNames()) {
+  for (const [key, value] of Object.entries(mcpServerConfig.env || {})) {
+    const envKey = /^[A-Za-z0-9_-]+$/.test(key) ? key : quoteTomlString(key);
+    configArgs.push("-c", `mcp_servers.${name}.env.${envKey}=${quoteTomlString(value)}`);
+  }
+  for (const toolName of name === "cyberboss_tools" ? listProjectToolNames() : []) {
     configArgs.push(
       "-c",
       `mcp_servers.${name}.tools.${toolName}.approval_mode=${quoteTomlString("auto")}`,
@@ -59,4 +92,5 @@ function normalizeNonEmptyString(value) {
 module.exports = {
   buildCodexMcpConfigArgs,
   resolveCodexProjectToolMcpServerConfig,
+  resolveCodexMcpServerConfigs,
 };
