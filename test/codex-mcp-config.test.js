@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const vm = require("node:vm");
 const { EventEmitter } = require("node:events");
@@ -77,10 +79,11 @@ test("adapter and RPC spawn pass both MCP servers without global OWNER_ID", asyn
   await new rpc.CodexRpcClient({ mcpServerConfig: legacy, env: {} }).connectSpawn();
   assert.ok(captured.args.includes(buildCodexMcpConfigArgs(legacy)[1]));
 });
-test("shared startup passes both servers and listen URL; ready server is reused", async () => {
+for (const platform of ["win32", "linux"]) {
+test(`shared startup on ${platform} preserves MCP arguments and reuses ready servers`, async () => {
   let captured;
   let ready = false;
-  const fakeProcess = { env: { ...env }, platform: process.platform, cwd: () => root, kill() {} };
+  const fakeProcess = { env: { ...env }, platform, cwd: () => root, kill() {} };
   const shared = load("scripts/shared-common.js", {
     dotenv: { config() {} },
     fs: { mkdirSync() {}, readFileSync() { throw new Error("missing pid"); }, openSync() { return 1; }, writeFileSync() {} },
@@ -100,6 +103,34 @@ test("shared startup passes both servers and listen URL; ready server is reused"
   }, fakeProcess);
   assert.equal((await shared.ensureSharedAppServer()).status, "started");
   assertBoth(captured.args);
+  assert.equal(captured.options.shell, false);
+  assert.equal(captured.options.windowsHide, true);
+  assert.equal(captured.options.detached, true);
+  const expectedArgs = [
+    ...buildCodexMcpConfigArgs(resolveCodexMcpServerConfigs({ cyberbossHome: root, env })),
+    "app-server", "--listen", shared.listenUrl,
+  ];
+  assert.equal(captured.command, platform === "win32" ? "cmd.exe" : "codex");
+  assert.deepEqual(Array.from(captured.args), platform === "win32" ? ["/c", "codex", ...expectedArgs] : expectedArgs);
+  if (platform === "win32" && process.platform === "win32") {
+    // Exercise Windows argument parsing with an argv recorder, never Codex.
+    const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "shared-argv-"));
+    try {
+      const recorder = path.join(fixtureDir, "record args.js");
+      fs.writeFileSync(recorder, "process.stdout.write(JSON.stringify(process.argv.slice(2)));");
+      const shim = path.join(fixtureDir, "codex.cmd");
+      fs.writeFileSync(shim, `@echo off\r\n"${process.execPath}" "${recorder}" %*\r\n`);
+      for (const launcher of [[process.execPath, recorder], [shim]]) {
+        const result = spawnSync(captured.command, ["/c", ...launcher, ...captured.args.slice(2)], {
+          shell: captured.options.shell, windowsHide: captured.options.windowsHide, encoding: "utf8",
+        });
+        assert.equal(result.status, 0, result.stderr || result.error?.message);
+        assert.deepEqual(JSON.parse(result.stdout), expectedArgs);
+      }
+    } finally {
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  }
   assert.equal(captured.args.slice(-3).join(" "), `app-server --listen ${shared.listenUrl}`);
   assert.equal(captured.options.env.OWNER_ID, undefined);
   captured = null;
@@ -108,3 +139,4 @@ test("shared startup passes both servers and listen URL; ready server is reused"
   fakeProcess.env.CYBERBOSS_RUNTIME = "claudecode";
   assert.equal((await shared.ensureSharedAppServer()).status, "skipped");
 });
+}

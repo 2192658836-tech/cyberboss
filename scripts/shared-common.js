@@ -108,12 +108,16 @@ function openLogFile(filePath) {
 function spawnDetachedCommand(command, args, { logFile, cwd = rootDir, env = {} } = {}) {
   const stdoutFd = openLogFile(logFile);
   const stderrFd = openLogFile(logFile);
-  const child = spawn(command, args, {
+  // Match the RPC client's explicit Windows launcher. Keep each TOML override
+  // as a separate argument so Node escapes its embedded quotes for the child.
+  const isWindows = process.platform === "win32";
+  const child = spawn(isWindows ? "cmd.exe" : command, isWindows ? ["/c", command, ...args] : args, {
     cwd,
     env: { ...process.env, ...env },
     detached: true,
     stdio: ["ignore", stdoutFd, stderrFd],
-    shell: process.platform === "win32",
+    shell: false,
+    windowsHide: true,
   });
   child.unref();
   return child.pid;
