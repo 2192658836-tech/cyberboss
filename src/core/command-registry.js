@@ -130,9 +130,9 @@ const COMMAND_GROUPS = [
       },
       {
         action: "channel.chunk_min",
-        summary: "Adjust the minimum short-chunk merge size for WeChat replies",
+        summary: "Explain natural paragraph splitting for WeChat replies",
         terminal: [],
-        weixin: ["/chunk <number>"],
+        weixin: ["/chunk"],
         status: "active",
       },
     ],

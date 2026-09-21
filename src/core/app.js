@@ -3,7 +3,6 @@ const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
 const { createWeixinChannelAdapter } = require("../adapters/channel/weixin");
-const { DEFAULT_MIN_WEIXIN_CHUNK, MAX_MIN_WEIXIN_CHUNK } = require("../adapters/channel/weixin/config-store");
 const { persistIncomingWeixinAttachments } = require("../adapters/channel/weixin/media-receive");
 const { createCodexRuntimeAdapter } = require("../adapters/runtime/codex");
 const { createClaudeCodeRuntimeAdapter } = require("../adapters/runtime/claudecode");
@@ -1287,33 +1286,12 @@ class CyberbossApp {
     });
   }
   async handleChunkCommand(normalized, command) {
-    const arg = normalizeCommandArgument(command.args);
-    if (!arg) {
-      const current = this.channelAdapter.getMinChunkChars?.() ?? DEFAULT_MIN_WEIXIN_CHUNK;
-      await this.channelAdapter.sendText({
-        userId: normalized.senderId,
-        text: `💡 Current minimum merge chunk is ${current} characters. Usage: /chunk <number> (e.g. /chunk 50)`,
-        contextToken: normalized.contextToken,
-      });
-      return;
-    }
-    const parsed = Number.parseInt(arg, 10);
-    if (!Number.isFinite(parsed) || parsed < 1 || parsed > MAX_MIN_WEIXIN_CHUNK) {
-      await this.channelAdapter.sendText({
-        userId: normalized.senderId,
-        text: `⚠️  Invalid value. Please provide a number between 1 and ${MAX_MIN_WEIXIN_CHUNK}.`,
-        contextToken: normalized.contextToken,
-      });
-      return;
-    }
-    const updated = this.channelAdapter.setMinChunkChars?.(parsed) ?? parsed;
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
-      text: `✅ Minimum merge chunk set to ${updated} characters. Shorter fragments will be merged into one message up to this size.`,
+      text: "💡 回复已按自然段和完整语义分段，不再按字符数合并，也不限制气泡数量。",
       contextToken: normalized.contextToken,
     });
   }
-
   async handleApprovalCommand(normalized, command) {
     const bindingKey = this.runtimeAdapter.getSessionStore().buildBindingKey({
       workspaceId: normalized.workspaceId,
@@ -2235,7 +2213,7 @@ function parseNumericOrderValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-const DEFERRED_REPLY_NOTICE = "由于微信 context_token 的限制，上轮对话里有一部分内容当时没能送达；这次用户再次发来消息、context_token 刷新后，先把遗留内容补上。如果这种情况反复出现，可发送 /chunk <数字>（例如 /chunk 50）调大最小合并字符数，减少消息分片。";
+const DEFERRED_REPLY_NOTICE = "由于微信 context_token 的限制，上轮对话里有一部分内容当时没能送达；这次用户再次发来消息、context_token 刷新后，先把遗留内容补上。";
 const DEFERRED_PLAIN_REPLY_HEADER = "===== 上轮对话遗留内容 =====";
 const DEFERRED_SYSTEM_REPLY_HEADER = "===== 期间模型主动联系 =====";
 

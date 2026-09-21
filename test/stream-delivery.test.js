@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const { StreamDelivery } = require("../src/core/stream-delivery");
 
-const DEFERRED_REPLY_NOTICE = "由于微信 context_token 的限制，上轮对话里有一部分内容当时没能送达；这次用户再次发来消息、context_token 刷新后，先把遗留内容补上。如果这种情况反复出现，可发送 /chunk <数字>（例如 /chunk 50）调大最小合并字符数，减少消息分片。";
+const DEFERRED_REPLY_NOTICE = "由于微信 context_token 的限制，上轮对话里有一部分内容当时没能送达；这次用户再次发来消息、context_token 刷新后，先把遗留内容补上。";
 const DEFERRED_PLAIN_REPLY_HEADER = "===== 上轮对话遗留内容 =====";
 const DEFERRED_SYSTEM_REPLY_HEADER = "===== 期间模型主动联系 =====";
 const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
@@ -563,4 +563,22 @@ test("plain reply with deferred prefix is sent as soon as the first item is fina
     contextToken: "ctx-8",
     preserveBlock: true,
   });
+});
+
+test("partial chunk delivery retries only the remaining text with the refreshed token", async () => {
+  const attempts = [];
+  const { streamDelivery } = createHarness({
+    async sendText(payload) {
+      attempts.push(payload);
+      if (attempts.length === 1) {
+        throw Object.assign(new Error("sendMessage ret=-2"), { ret: -2, remainingText: "第二段。\n\n第三段。" });
+      }
+    },
+    getKnownContextTokens: () => ({ u: "fresh" }),
+  });
+  streamDelivery.queueReplyTargetForThread("partial", { userId: "u", contextToken: "old", provider: "weixin" });
+  await runCompletedTurn(streamDelivery, { threadId: "partial", turnId: "turn", itemId: "item", text: "第一段。\n\n第二段。\n\n第三段。" });
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[1].text, "第二段。\n\n第三段。");
+  assert.equal(attempts[1].contextToken, "fresh");
 });

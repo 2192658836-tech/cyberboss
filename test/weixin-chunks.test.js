@@ -32,9 +32,9 @@ test("stripChunkTailChineseFullStops only removes a chunk-ending Chinese full st
   assert.equal(stripChunkTailChineseFullStops("“无语。。。”"), "“无语。。。”");
 });
 
-test("finalizeWeixinDeliveryChunk preserves internal newlines and strips only the final Chinese full stop", () => {
-  assert.equal(finalizeWeixinDeliveryChunk("A。\n\nB。"), "A。\n\nB");
-  assert.equal(finalizeWeixinDeliveryChunk("A。\n\n"), "A");
+test("finalizeWeixinDeliveryChunk preserves punctuation and internal newlines", () => {
+  assert.equal(finalizeWeixinDeliveryChunk("A。\n\nB。"), "A。\n\nB。");
+  assert.equal(finalizeWeixinDeliveryChunk("A。\n\n"), "A。");
   assert.equal(finalizeWeixinDeliveryChunk("真的吗???"), "真的吗???");
   assert.equal(finalizeWeixinDeliveryChunk("无语..."), "无语...");
   assert.equal(finalizeWeixinDeliveryChunk("救命……"), "救命……");
@@ -89,11 +89,11 @@ test("chunkReplyText keeps repeated punctuation together when splitting", () => 
   assert.deepEqual(chunkReplyText("1234567890。。。\n1234567890", 20), ["1234567890。。。\n", "1234567890"]);
 });
 
-test("chunkReplyTextForWeixin merges short natural boundaries", () => {
-  // Each unit is below MIN_WEIXIN_CHUNK (20), so they get merged
+test("chunkReplyTextForWeixin respects explicit paragraphs even when short", () => {
+  // Explicit paragraph boundaries take priority over legacy minimum length.
   const text = "A。\n\nB。\n\nC。";
   const chunks = chunkReplyTextForWeixin(text);
-  assert.deepEqual(chunks, ["A。\n\nB。\n\nC。"]);
+  assert.deepEqual(chunks, ["A。\n\n", "B。\n\n", "C。"]);
 });
 
 test("chunkReplyTextForWeixin does not merge chunks above min length", () => {
@@ -106,11 +106,11 @@ test("chunkReplyTextForWeixin does not merge chunks above min length", () => {
   assert.equal(chunks[1], longB);
 });
 
-test("chunkReplyTextForWeixin merges short adjacent chunks", () => {
+test("chunkReplyTextForWeixin keeps short adjacent paragraphs", () => {
   const text = ["短1", "短2", "这是一段比较长的话，不应该和前面的短句合并在一起"].join("\n\n");
   const chunks = chunkReplyTextForWeixin(text);
-  assert.equal(chunks[0], "短1\n\n短2\n\n");
-  assert.ok(!chunks[1].startsWith("短2"));
+  assert.equal(chunks[0], "短1\n\n");
+  assert.equal(chunks[1], "短2\n\n");
 });
 
 test("mergeShortChunks only merges when both sides are short", () => {
@@ -128,18 +128,18 @@ test("mergeShortChunks does not merge when one side is long", () => {
   assert.equal(merged[1], "c".repeat(100));
 });
 
-test("packChunksForWeixinDelivery limits to maxMessages", () => {
+test("packChunksForWeixinDelivery ignores obsolete bubble limits", () => {
   const chunks = Array.from({ length: 15 }, (_, i) => `chunk-${i}`);
   const packed = packChunksForWeixinDelivery(chunks, 10, 3800);
-  assert.equal(packed.length, 10);
+  assert.equal(packed.length, chunks.length);
 });
 
-test("packChunksForWeixinDelivery groups tail when over limit", () => {
+test("packChunksForWeixinDelivery preserves the complete tail", () => {
   const chunks = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
   const packed = packChunksForWeixinDelivery(chunks, 10, 3800);
-  assert.equal(packed.length, 10);
+  assert.equal(packed.length, chunks.length);
   assert.equal(packed[0], "1");
-  assert.ok(packed[9].includes("11") || packed[9].includes("12"));
+  assert.deepEqual(packed, chunks);
 });
 
 test("splitUtf8 hard-truncates oversized text", () => {

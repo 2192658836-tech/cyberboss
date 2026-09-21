@@ -64,7 +64,7 @@ test("handleCheckinCommand reports the fixed policy without changing it", async 
   assert.equal(sent[0].text, "⏰ Check-in uses a fixed random 30-45 minute interval; Asia/Shanghai quiet hours are 01:00-08:00. User messages restart the timer.");
 });
 
-test("handleChunkCommand reports current value and persists updates through the channel adapter", async () => {
+test("handleChunkCommand explains semantic splitting without changing character settings", async () => {
   const sent = [];
   let minChunk = 20;
   const appLike = {
@@ -95,7 +95,7 @@ test("handleChunkCommand reports current value and persists updates through the 
     args: "50",
   });
 
-  assert.equal(sent[0].text, "💡 Current minimum merge chunk is 20 characters. Usage: /chunk <number> (e.g. /chunk 50)");
-  assert.equal(sent[1].text, "✅ Minimum merge chunk set to 50 characters. Shorter fragments will be merged into one message up to this size.");
-  assert.equal(minChunk, 50);
+  assert.equal(sent[0].text, "💡 回复已按自然段和完整语义分段，不再按字符数合并，也不限制气泡数量。");
+  assert.equal(sent[1].text, "💡 回复已按自然段和完整语义分段，不再按字符数合并，也不限制气泡数量。");
+  assert.equal(minChunk, 20);
 });

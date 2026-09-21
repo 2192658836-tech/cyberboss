@@ -418,6 +418,7 @@ class StreamDelivery {
       await this.channelAdapter.sendText(payload);
       return;
     } catch (error) {
+      if (typeof error.remainingText === "string") payload = { ...payload, text: error.remainingText };
       const retryTarget = this.resolveRetriableReplyTarget(initialTarget, error);
       if (!retryTarget) {
         const deferred = await this.deferSystemReply(state, payload.text, error, kind);
@@ -448,7 +449,8 @@ class StreamDelivery {
           });
         }
       } catch (retryError) {
-        const deferred = await this.deferSystemReply(state, payload.text, retryError, kind);
+        const remainingText = typeof retryError.remainingText === "string" ? retryError.remainingText : payload.text;
+        const deferred = await this.deferSystemReply(state, remainingText, retryError, kind);
         if (deferred) {
           return;
         }
