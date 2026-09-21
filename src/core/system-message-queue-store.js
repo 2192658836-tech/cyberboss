@@ -97,6 +97,7 @@ function normalizeSystemMessage(message) {
     workspaceRoot,
     text,
     createdAt: createdAt || new Date().toISOString(),
+    ...(message.checkin ? { checkin: message.checkin } : {}),
   };
 }
 

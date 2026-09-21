@@ -37,7 +37,7 @@ test("checkin config store falls back to defaults and persists overrides", () =>
   });
 });
 
-test("handleCheckinCommand stores the new range and replies in English", async () => {
+test("handleCheckinCommand reports the fixed policy without changing it", async () => {
   const sent = [];
   const store = createStore();
   const appLike = {
@@ -57,11 +57,11 @@ test("handleCheckinCommand stores the new range and replies in English", async (
   });
 
   assert.deepEqual(store.getRange(), {
-    minIntervalMs: 7 * 60_000,
-    maxIntervalMs: 21 * 60_000,
+    minIntervalMs: DEFAULT_MIN_INTERVAL_MS,
+    maxIntervalMs: DEFAULT_MAX_INTERVAL_MS,
   });
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].text, "✅ Check-in interval reset to 7-21 minutes and will apply on the next polling cycle.");
+  assert.equal(sent[0].text, "⏰ Check-in uses a fixed random 30-45 minute interval; Asia/Shanghai quiet hours are 01:00-08:00. User messages restart the timer.");
 });
 
 test("handleChunkCommand reports current value and persists updates through the channel adapter", async () => {

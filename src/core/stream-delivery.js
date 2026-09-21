@@ -3,7 +3,8 @@ const { sanitizeProtocolLeakText } = require("../adapters/runtime/codex/protocol
 const CURRENT_REPLY_HEADER = "===== 本轮模型回复 =====";
 
 class StreamDelivery {
-  constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs }) {
+  constructor({ channelAdapter, sessionStore, runtimeId = "", onDeferredSystemReply, systemReplyRetryScheduleMs, sameTokenRetryDelayMs, checkinStateStore }) {
+    this.checkinStateStore = checkinStateStore;
     this.channelAdapter = channelAdapter;
     this.sessionStore = sessionStore;
     this.runtimeId = normalizeRuntimeId(runtimeId);
@@ -323,7 +324,18 @@ class StreamDelivery {
     }
 
     const replyText = buildReplyText(state, { completedOnly: false });
-    const resolved = resolveSystemReplyDelivery(replyText, this.systemReplyPolicy);
+    let resolved = resolveSystemReplyDelivery(replyText, this.systemReplyPolicy);
+    const checkin = state.replyTarget?.checkin;
+    if (checkin) {
+      if (!this.checkinStateStore?.canSend(checkin)) { this.markAllItemsSent(state); return; }
+      const previous = this.checkinStateStore.read()[JSON.stringify([checkin.accountId, checkin.senderId])]?.lastProactiveText;
+      if (resolved.kind !== "send_message" || resolved.message === previous) {
+        const alternatives = ["刚刚想起你，过来陪你一会儿。", "忙自己的就好，我在这儿陪着你。", "有点想你，给你留一句话。"];
+        const candidates = alternatives.filter((message) => message !== previous);
+        resolved = { kind: "send_message", message: checkin.kind === "morning" ? "早安，新的一天，慢慢来，我陪着你。" : candidates[Math.floor(Math.random() * candidates.length)] };
+      }
+      if (checkin.kind === "morning" && !/早安|早上好/.test(resolved.message)) resolved.message = `早安。${resolved.message}`;
+    }
     if (resolved.kind === "silent") {
       this.markAllItemsSent(state);
       console.log(
@@ -383,6 +395,15 @@ class StreamDelivery {
 
   async sendSystemReply(state, text) {
     const initialTarget = state.replyTarget;
+    if (initialTarget.checkin) {
+      const token = initialTarget.checkin;
+      if (!this.checkinStateStore?.canSend(token)) return;
+      try {
+        await this.channelAdapter.sendText({ userId: initialTarget.userId, text, contextToken: initialTarget.contextToken });
+        this.checkinStateStore.sent(token, Date.now(), text);
+      } catch (error) { this.checkinStateStore.release(token); throw error; }
+      return;
+    }
     const payload = {
       userId: initialTarget.userId,
       text,
@@ -537,6 +558,7 @@ class StreamDelivery {
       userId: target.userId,
       contextToken: target.contextToken,
       provider: target.provider,
+      ...(target.checkin ? { checkin: target.checkin } : {}),
     };
     state.threadReplyTargetAttached = true;
   }
@@ -699,6 +721,7 @@ function normalizeReplyTarget(target) {
     userId: String(target.userId).trim(),
     contextToken: String(target.contextToken).trim(),
     provider: normalizeText(target.provider),
+    ...(target.checkin ? { checkin: target.checkin } : {}),
   };
 }
 

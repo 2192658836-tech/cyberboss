@@ -30,7 +30,8 @@ class SystemMessageDispatcher {
       threadKey: `system:${message.senderId}`,
       senderId: message.senderId,
       messageId: message.id,
-      text: buildSystemInboundText(message?.text, message?.createdAt),
+      text: buildSystemInboundText(message?.text, message?.createdAt, message?.checkin),
+      ...(message.checkin ? { checkin: message.checkin } : {}),
       attachments: [],
       command: "message",
       contextToken,
@@ -40,7 +41,7 @@ class SystemMessageDispatcher {
   }
 }
 
-function buildSystemInboundText(text, createdAt = "") {
+function buildSystemInboundText(text, createdAt = "", checkin = null) {
   const body = normalizeText(text);
   const localTime = formatSystemLocalTime(createdAt);
   const sections = [
@@ -55,6 +56,11 @@ function buildSystemInboundText(text, createdAt = "") {
   ];
   if (body) {
     sections.push("", "Trigger:", body);
+  }
+  if (checkin) {
+    sections.push("", "CHECK-IN DELIVERY RULES: Asia/Shanghai. This scheduled contact MUST return send_message, never silent. Do not send messages through tools; return the message only.",
+      checkin.kind === "morning" ? "Send today's first natural good morning greeting. Include 早安 or 早上好." : "Naturally reconnect without repeating the previous proactive message. Do not repeat the first morning greeting.",
+      "Continue a recent topic, share a thought, express affection or talk about daily life. Not every message needs a question. Avoid mechanical reminders, pressure, or blaming the user for not replying.");
   }
   return sections.join("\n").trim();
 }

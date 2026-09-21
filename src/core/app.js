@@ -22,7 +22,7 @@ const { resolveVisionContext } = require("../services/vision-context");
 const {
   buildWeixinHelpText,
 } = require("./command-registry");
-const { CheckinConfigStore, parseCheckinRangeMinutes, resolveDefaultCheckinRange } = require("./checkin-config-store");
+const { CheckinConfigStore } = require("./checkin-config-store");
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("./default-targets");
 const { StreamDelivery } = require("./stream-delivery");
 const { ThreadStateStore } = require("./thread-state-store");
@@ -41,6 +41,7 @@ const {
   splitCommandLine,
 } = require("../adapters/runtime/shared/approval-command");
 const { runSystemCheckinPoller } = require("../app/system-checkin-poller");
+const { CheckinStateStore, statePath } = require("./checkin-state-store");
 const { createProjectTooling } = require("../tools/create-project-tooling");
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 const MIN_LONG_POLL_TIMEOUT_MS = 2_000;
@@ -75,6 +76,7 @@ class CyberbossApp {
     this.systemMessageQueue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
+    this.checkinStateStore = new CheckinStateStore({ filePath: statePath(config) });
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
     this.reminderQueue = new ReminderQueueStore({ filePath: config.reminderQueueFile });
     this.turnGateStore = new TurnGateStore();
@@ -86,6 +88,7 @@ class CyberbossApp {
       channelAdapter: this.channelAdapter,
       sessionStore: this.runtimeAdapter.getSessionStore(),
       runtimeId: this.runtimeAdapter.describe().id,
+      checkinStateStore: this.checkinStateStore,
       onDeferredSystemReply: (payload) => this.deferSystemReply(payload),
     });
     this.pendingOperationByRunKey = new Map();
@@ -330,6 +333,7 @@ class CyberbossApp {
     if (!normalized) {
       return;
     }
+    this.checkinStateStore?.userMessage(normalized.accountId, normalized.senderId, normalized.receivedAt);
 
     this.primeDeferredRepliesForSender(normalized);
     await this.handlePreparedMessage(normalized, { allowCommands: true });
@@ -467,6 +471,7 @@ class CyberbossApp {
         userId: prepared.senderId,
         contextToken: prepared.contextToken,
         provider: prepared.provider,
+        ...(prepared.checkin ? { checkin: prepared.checkin } : {}),
       };
       if (turn.turnId) {
         this.streamDelivery.bindReplyTargetForTurn({
@@ -936,6 +941,7 @@ class CyberbossApp {
   }
 
   async dispatchSystemMessage(message) {
+    if (message.checkin && !this.checkinStateStore.canSend(message.checkin)) return true;
     const prepared = this.systemMessageDispatcher?.buildPreparedMessage(message, this.channelAdapter.getKnownContextTokens()[message.senderId] || "");
     if (!prepared) {
       throw new Error("system message could not be prepared");
@@ -1274,38 +1280,12 @@ class CyberbossApp {
   }
 
   async handleCheckinCommand(normalized, command) {
-    const rangeInput = normalizeCommandArgument(command.args);
-    if (!rangeInput) {
-      const currentRange = this.checkinConfigStore.getRange(resolveDefaultCheckinRange());
-      await this.channelAdapter.sendText({
-        userId: normalized.senderId,
-        text: `⏰ Current check-in interval is ${Math.round(currentRange.minIntervalMs / 60000)}-${Math.round(currentRange.maxIntervalMs / 60000)} minutes.`,
-        contextToken: normalized.contextToken,
-      });
-      return;
-    }
-
-    const parsedRange = parseCheckinRangeMinutes(rangeInput);
-    if (!parsedRange) {
-      await this.channelAdapter.sendText({
-        userId: normalized.senderId,
-        text: "💡 Usage: /checkin <min>-<max>",
-        contextToken: normalized.contextToken,
-      });
-      return;
-    }
-
-    this.checkinConfigStore.setRange({
-      minIntervalMs: parsedRange.minMinutes * 60_000,
-      maxIntervalMs: parsedRange.maxMinutes * 60_000,
-    });
     await this.channelAdapter.sendText({
       userId: normalized.senderId,
-      text: `✅ Check-in interval reset to ${parsedRange.minMinutes}-${parsedRange.maxMinutes} minutes and will apply on the next polling cycle.`,
+      text: "⏰ Check-in uses a fixed random 30-45 minute interval; Asia/Shanghai quiet hours are 01:00-08:00. User messages restart the timer.",
       contextToken: normalized.contextToken,
     });
   }
-
   async handleChunkCommand(normalized, command) {
     const arg = normalizeCommandArgument(command.args);
     if (!arg) {
